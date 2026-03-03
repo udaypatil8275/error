@@ -341,6 +341,65 @@
             box-shadow: 0 0 20px rgba(0, 243, 255, 0.4);
         }
 
+        /* SCREEN ADJUST SLIDER - MOBILE ONLY */
+        #screen-adjust-container {
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            z-index: 100;
+            pointer-events: auto;
+            gap: 4px;
+        }
+
+        #screen-adjust-container .adjust-label {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 9px;
+            color: rgba(255, 255, 255, 0.4);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+        }
+
+        #screen-adjust-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 120px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+            outline: none;
+            transform: rotate(-90deg);
+            transform-origin: center center;
+            margin: 55px 0;
+        }
+
+        #screen-adjust-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid rgba(0, 243, 255, 0.5);
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(0, 243, 255, 0.3);
+        }
+
+        #screen-adjust-slider::-moz-range-thumb {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid rgba(0, 243, 255, 0.5);
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(0, 243, 255, 0.3);
+        }
+
         /* CUSTOMIZATION RESPONSIVE */
         .cust-container {
             display: flex;
@@ -742,6 +801,13 @@
             </div>
         </div>
 
+        <!-- SCREEN ADJUST SLIDER (mobile only, during gameplay) -->
+        <div id="screen-adjust-container">
+            <div class="adjust-label">▲ VIEW</div>
+            <input type="range" id="screen-adjust-slider" min="-200" max="200" value="0" step="5">
+            <div class="adjust-label">VIEW ▼</div>
+        </div>
+
         <div id="main-menu" class="screen" style="display: flex;">
             <div class="menu-frame">
                 <div class="time-circle"></div>
@@ -905,6 +971,16 @@
 
         // TOUCH DETECTION
         const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+        // SCREEN ADJUST SLIDER - manual camera Y offset for mobile
+        let screenAdjustOffset = parseInt(localStorage.getItem('zm_screen_offset') || '0');
+        const screenAdjustSlider = document.getElementById('screen-adjust-slider');
+        const screenAdjustContainer = document.getElementById('screen-adjust-container');
+        screenAdjustSlider.value = screenAdjustOffset;
+        screenAdjustSlider.oninput = function () {
+            screenAdjustOffset = parseInt(this.value);
+            localStorage.setItem('zm_screen_offset', screenAdjustOffset);
+        };
 
         // SCREEN ORIENTATION LOCK
         async function lockLandscape() {
@@ -1684,7 +1760,7 @@
             document.getElementById('level-indicator').style.display = 'block';
             document.getElementById('time-dilator').style.display = 'block';
 
-            if (isTouchDevice) document.getElementById('mobile-controls').style.display = 'flex';
+            if (isTouchDevice) { document.getElementById('mobile-controls').style.display = 'flex'; screenAdjustContainer.style.display = 'flex'; }
 
             systemAI.generateCommentary('start', LEVELS[index].name);
         }
@@ -1849,10 +1925,8 @@
             }
             gameState.camera.x += (p.x - (width / worldScale) / 3 - gameState.camera.x) * 0.1;
             // Track the player vertically so the world scrolls into view on short screens
-            const targetCamY = p.y - (height / worldScale) * 0.5;
+            const targetCamY = p.y - (height / worldScale) * 0.5 + screenAdjustOffset;
             gameState.camera.y += (targetCamY - gameState.camera.y) * 0.1;
-            // Clamp so we don't scroll above the world top
-            if (gameState.camera.y < 0) gameState.camera.y = 0;
 
             if (gameState.camera.shake > 0) gameState.camera.shake *= 0.85;
             if (gameState.camera.shake < 0.5) gameState.camera.shake = 0;
@@ -2010,7 +2084,7 @@
                 gameState.camera.x = gameState.player.x - width / 3; spawnParticles(gameState.player.x, gameState.player.y, '#0ff', 20);
                 document.getElementById('ui-layer').style.display = 'block'; document.getElementById('pause-btn').style.display = 'flex';
                 const wall = gameState.entities.find(e => e instanceof DeathWall); if (wall) wall.x = gameState.player.x - 700;
-                if (isTouchDevice) document.getElementById('mobile-controls').style.display = 'flex';
+                if (isTouchDevice) { document.getElementById('mobile-controls').style.display = 'flex'; screenAdjustContainer.style.display = 'flex'; }
             } else {
                 loadLevel(gameState.currentLevel, false);
             }
@@ -2031,7 +2105,7 @@
         function die() {
             if (gameState.state === 'DEAD') return;
             gameState.state = 'DEAD'; gameState.deathTimer = Date.now(); gameState.player.dead = true; gameState.camera.shake = 8; gameState.trail = [];
-            document.getElementById('mobile-controls').style.display = 'none';
+            document.getElementById('mobile-controls').style.display = 'none'; screenAdjustContainer.style.display = 'none';
             audio.silence(); audio.playSnap(); createDeathShards(gameState.player.x, gameState.player.y, gameState.player.w, gameState.player.h);
             setTimeout(respawnPlayer, 600);
         }
@@ -2048,16 +2122,16 @@
             if (gameState.currentLevel + 1 > unlockState.levelsCompleted) { unlockState.levelsCompleted = gameState.currentLevel + 1; }
             if (gameState.currentLevel + 1 >= gameState.maxUnlocked) gameState.maxUnlocked = Math.min(gameState.maxUnlocked + 1, LEVELS.length);
             document.getElementById('ui-layer').style.display = 'none'; document.getElementById('pause-btn').style.display = 'none';
-            document.getElementById('mobile-controls').style.display = 'none';
+            document.getElementById('mobile-controls').style.display = 'none'; screenAdjustContainer.style.display = 'none';
             audio.silence(); document.getElementById('level-screen').style.display = 'flex';
         }
 
         function togglePause() {
             const modal = document.getElementById('settings-modal');
             if (gameState.state === 'GAME') {
-                gameState.state = 'PAUSED'; modal.style.display = 'flex'; document.getElementById('close-settings-btn').style.display = 'none'; document.getElementById('resume-btn').style.display = 'block'; document.getElementById('quit-btn').style.display = 'block'; document.getElementById('mobile-controls').style.display = 'none'; audio.silence();
+                gameState.state = 'PAUSED'; modal.style.display = 'flex'; document.getElementById('close-settings-btn').style.display = 'none'; document.getElementById('resume-btn').style.display = 'block'; document.getElementById('quit-btn').style.display = 'block'; document.getElementById('mobile-controls').style.display = 'none'; screenAdjustContainer.style.display = 'none'; audio.silence();
             } else if (gameState.state === 'PAUSED') {
-                gameState.state = 'GAME'; modal.style.display = 'none'; if (isTouchDevice) document.getElementById('mobile-controls').style.display = 'flex';
+                gameState.state = 'GAME'; modal.style.display = 'none'; if (isTouchDevice) { document.getElementById('mobile-controls').style.display = 'flex'; screenAdjustContainer.style.display = 'flex'; }
             }
         }
 
