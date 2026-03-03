@@ -1156,6 +1156,10 @@
         const JUMP_FORCE = 11.5;
         const TIME_INERTIA = 0.05;
 
+        // Design dimensions - the game world was designed for this height
+        const DESIGN_HEIGHT = 700;
+        let worldScale = 1;
+
         let CURRENT_MAX_SPEED = 11;
         let CURRENT_ACCEL = 0.8;
 
@@ -1231,6 +1235,8 @@
         function resize() {
             width = canvas.width = canvas.parentElement.clientWidth;
             height = canvas.height = canvas.parentElement.clientHeight;
+            // Scale the game world to fit the screen height
+            worldScale = height / DESIGN_HEIGHT;
             initMenuParticles();
             if (gameState.ambientDust) { gameState.ambientDust.forEach(p => p.reset()); }
         }
@@ -1393,8 +1399,8 @@
                 const screenX = this.x - camX; ctx.save();
                 const gradient = ctx.createLinearGradient(screenX, 0, screenX + this.w, 0);
                 gradient.addColorStop(0, 'rgba(255, 0, 0, 0)'); gradient.addColorStop(1, 'rgba(255, 0, 0, 0.6)');
-                ctx.fillStyle = gradient; ctx.fillRect(screenX, 0, this.w, height);
-                const spikeHeight = 40; const spikeWidth = 25; const numSpikes = Math.ceil(height / spikeHeight); const borderX = screenX + this.w;
+                ctx.fillStyle = gradient; ctx.fillRect(screenX, 0, this.w, DESIGN_HEIGHT);
+                const spikeHeight = 40; const spikeWidth = 25; const numSpikes = Math.ceil(DESIGN_HEIGHT / spikeHeight); const borderX = screenX + this.w;
                 ctx.fillStyle = '#ff0000'; ctx.shadowColor = '#f00'; ctx.shadowBlur = 20;
                 ctx.beginPath(); ctx.moveTo(borderX, 0);
                 for (let i = 0; i < numSpikes; i++) { const y = i * spikeHeight; ctx.lineTo(borderX + spikeWidth, y + (spikeHeight / 2)); ctx.lineTo(borderX, y + spikeHeight); }
@@ -1803,7 +1809,7 @@
             }
 
             if (!wasGrounded && p.grounded) { audio.playLand(); }
-            if (p.y > height + 200) die();
+            if (p.y > DESIGN_HEIGHT + 200) die();
             const totalSpeed = Math.sqrt((p.vx * p.vx) + (p.vy * p.vy));
             const speedRatio = Math.min(1, Math.abs(p.vx) / CURRENT_MAX_SPEED);
             const targetZoom = 1.02 - (speedRatio * 0.04);
@@ -1841,7 +1847,12 @@
                 const portalCenterX = gameState.portal.x + gameState.portal.w / 2;
                 if (Math.abs((p.x + p.w / 2) - portalCenterX) < 30 && p.y > gameState.portal.y && gameState.portal.openState > 0.5) levelComplete();
             }
-            gameState.camera.x += (p.x - width / 3 - gameState.camera.x) * 0.1;
+            gameState.camera.x += (p.x - (width / worldScale) / 3 - gameState.camera.x) * 0.1;
+            // Track the player vertically so the world scrolls into view on short screens
+            const targetCamY = p.y - (height / worldScale) * 0.5;
+            gameState.camera.y += (targetCamY - gameState.camera.y) * 0.1;
+            // Clamp so we don't scroll above the world top
+            if (gameState.camera.y < 0) gameState.camera.y = 0;
 
             if (gameState.camera.shake > 0) gameState.camera.shake *= 0.85;
             if (gameState.camera.shake < 0.5) gameState.camera.shake = 0;
@@ -1854,14 +1865,23 @@
             ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, width, height);
             if (gameState.ambientDust) { for (let dust of gameState.ambientDust) { dust.draw(ctx); } }
 
-            ctx.save(); ctx.translate(width / 2, height / 2); ctx.scale(gameState.camera.zoom, gameState.camera.zoom); ctx.translate(-width / 2, -height / 2);
+            // Apply world scaling so the game fits on any screen height
+            ctx.save();
+            ctx.scale(worldScale, worldScale);
+            const scaledWidth = width / worldScale;
+            const scaledHeight = height / worldScale;
+
+            ctx.save(); ctx.translate(scaledWidth / 2, scaledHeight / 2); ctx.scale(gameState.camera.zoom, gameState.camera.zoom); ctx.translate(-scaledWidth / 2, -scaledHeight / 2);
             if (gameState.camera.shake > 0) { const sx = (Math.random() - 0.5) * gameState.camera.shake; const sy = (Math.random() - 0.5) * gameState.camera.shake; ctx.translate(sx, sy); }
 
             const camX = gameState.camera.x;
-            ctx.save(); ctx.strokeStyle = '#003333'; ctx.lineWidth = 1; let horizonY = height * 0.8;
-            for (let i = 0; i < width; i += 100) { let xPos = (i - (camX * 0.5)) % (width * 2); if (xPos < 0) xPos += width * 2; ctx.beginPath(); ctx.moveTo(xPos, horizonY); ctx.lineTo(xPos - (width / 2 - xPos), height); ctx.stroke(); }
+            const camY = gameState.camera.y;
+            // Apply vertical camera offset
+            ctx.translate(0, -camY);
+            ctx.save(); ctx.strokeStyle = '#003333'; ctx.lineWidth = 1; let horizonY = DESIGN_HEIGHT * 0.8;
+            for (let i = 0; i < scaledWidth; i += 100) { let xPos = (i - (camX * 0.5)) % (scaledWidth * 2); if (xPos < 0) xPos += scaledWidth * 2; ctx.beginPath(); ctx.moveTo(xPos, horizonY); ctx.lineTo(xPos - (scaledWidth / 2 - xPos), DESIGN_HEIGHT); ctx.stroke(); }
             let moveZ = (Date.now() / 1000 * gameState.timeFactor * 100) % 50;
-            for (let i = 0; i < height - horizonY; i += 20) { let yPos = horizonY + i + moveZ; if (yPos > height) yPos -= (height - horizonY); ctx.beginPath(); ctx.moveTo(0, yPos); ctx.lineTo(width, yPos); ctx.stroke(); }
+            for (let i = 0; i < DESIGN_HEIGHT - horizonY; i += 20) { let yPos = horizonY + i + moveZ; if (yPos > DESIGN_HEIGHT) yPos -= (DESIGN_HEIGHT - horizonY); ctx.beginPath(); ctx.moveTo(0, yPos); ctx.lineTo(scaledWidth, yPos); ctx.stroke(); }
             ctx.restore();
             ctx.save();
             for (let d of gameState.decor) d.draw(ctx, camX);
@@ -1882,7 +1902,7 @@
             } else if (!gameState.player.dead) {
                 drawPlayer(ctx, gameState.player.x, gameState.player.y, gameState.player.w, gameState.player.h, gameState.player.vx, playerSkin, camX);
             }
-            ctx.restore(); ctx.restore();
+            ctx.restore(); ctx.restore(); ctx.restore();
 
             if (gameState.state === 'PAUSED') { ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, width, height); }
         }
